@@ -11,8 +11,8 @@ class MappingCreator:
         self.txCounter = 0
         pass
 
-    def createMapping(self):
-        self.__readFile()
+    def createMapping(self, data_file="sample_tx.txt"):
+        self.__readFile(data_file)
         self.__populateMapping()
         self.__writeMappings()
 
@@ -22,9 +22,9 @@ class MappingCreator:
     def readTxMapping(self):
         return self.__readMapping("tx")
 
-    def __readFile(self):
+    def __readFile(self, data_file):
         self.full_data = pd.DataFrame(columns=['tx','inputs'])
-        with open('sample_tx.txt', 'r') as f:
+        with open(data_file, 'r') as f:
             for line in f:
                 data = np.array(line.split(','))
                 self.full_data = self.full_data.append({'tx':data[0], 'inputs': data[1:]}, ignore_index=True)
@@ -56,8 +56,3 @@ class MappingCreator:
     def __readMapping(self, file):
         with open('mappings/'+file+'.pkl', 'rb') as f:
             return pickle.load(f)
-
-
-print MappingCreator().createMapping()
-print MappingCreator().readInputMapping()
-print MappingCreator().readTxMapping()
