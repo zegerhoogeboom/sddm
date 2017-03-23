@@ -23,9 +23,11 @@ class MappingCreator:
         return self.__readMapping("tx")
 
     def __readFile(self):
-        self.full_data = pd.read_csv("sample_tx.txt", names=['tx', 'inputs'])
-        for ix, value in self.full_data['inputs'].iteritems():
-            self.full_data['inputs'][ix] = value.split(';')
+        self.full_data = pd.DataFrame(columns=['tx','inputs'])
+        with open('sample_tx.txt', 'r') as f:
+            for line in f:
+                data = np.array(line.split(','))
+                self.full_data = self.full_data.append({'tx':data[0], 'inputs': data[1:]}, ignore_index=True)
 
     def __compressInputValue(self, input):
         if input not in self.mapping:
@@ -56,5 +58,6 @@ class MappingCreator:
             return pickle.load(f)
 
 
+print MappingCreator().createMapping()
 print MappingCreator().readInputMapping()
 print MappingCreator().readTxMapping()
