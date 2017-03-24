@@ -28,24 +28,27 @@ class MappingCreator:
     def createMapping(self, data_file="sample_tx.txt"):
         self.infile = open(data_file, 'r')
 
-        self.pin = mp.Process(target=self.__readFile, args=())
-        self.pout = mp.Process(target=self.__writeMappings, args=())
-        self.ps = [ mp.Process(target=self.__populateMapping, args=(self.mapping, self.txMapping))
+        pin = mp.Process(target=self.__readFile, args=())
+        p_write_inputs = mp.Process(target=self.write_input_mappings, args=())
+        p_write_tx = mp.Process(target=self.write_tx_mappings, args=())
+        ps = [mp.Process(target=self.__populateMapping, args=(self.mapping, self.txMapping))
                     for i in range(self.numprocs)]
 
-        self.pin.start()
-        self.pout.start()
-        for p in self.ps:
+        pin.start()
+        p_write_inputs.start()
+        p_write_tx.start()
+        for p in ps:
             p.start()
 
-        self.pin.join()
+        pin.join()
         i = 0
-        for p in self.ps:
+        for p in ps:
             p.join()
             print "Done", i
             i += 1
 
-        self.pout.join()
+        p_write_inputs.join()
+        p_write_tx.join()
         self.infile.close()
 
     def readInputMapping(self):
@@ -90,17 +93,20 @@ class MappingCreator:
         self.inputs_out_queue.put("STOP")
         self.tx_out_queue.put("STOP")
 
-    def __writeMappings(self):
+    def write_input_mappings(self):
         inputs = open('mappings/inputs.txt', 'a')
-        tx = open('mappings/tx.txt', 'a')
         for works in range(self.numprocs):
             for i, val in iter(self.inputs_out_queue.get, "STOP"):
                 if "\n" not in val:
                     val += "\n"
                 inputs.write("%s,%s" % (i, val))
+        inputs.close()
+
+    def write_tx_mappings(self):
+        tx = open('mappings/tx.txt', 'a')
+        for works in range(self.numprocs):
             for i, val in iter(self.tx_out_queue.get, "STOP"):
                 tx.write("%s,%s\n" % (i, val))
-        inputs.close()
         tx.close()
 
     def __readMapping(self, file):
