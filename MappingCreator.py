@@ -1,48 +1,51 @@
-import pandas as pd
 import numpy as np
 import multiprocessing as mp
 
 
+# Basic structure taken from:
+# http://stackoverflow.com/questions/2359253/solving-embarassingly-parallel-problems-using-python-multiprocessing
 class MappingCreator:
     def __init__(self):
-        self.counter = 0
-        self.txCounter = 0
         manager = mp.Manager()
+
+        # Dict to share between processes.
+        # More info: https://docs.python.org/3/library/multiprocessing.html#sharing-state-between-processes
         self.mapping = manager.dict()
         self.txMapping = manager.dict()
 
+        # Shared counter
+        # More info: http://eli.thegreenplace.net/2012/01/04/shared-counter-with-pythons-multiprocessing
         self.p_counter = mp.Value('i', 0)
         self.lock = mp.Lock()
 
         self.p_counter_tx = mp.Value('i', 0)
         self.lock_tx = mp.Lock()
 
+        # Max amount of processors. This setting: Use ALL of the CPU's!
         self.numprocs = mp.cpu_count()
 
-        self.inq = mp.Queue()
+        self.input_queue = mp.Queue()
         self.inputs_out_queue = mp.Queue()
         self.tx_out_queue = mp.Queue()
 
-        self.full_data = pd.DataFrame(columns=['tx','inputs'])
-
-    def createMapping(self, data_file="sample_tx.txt"):
+    def create_mapping(self, data_file="sample_tx.txt"):
         self.infile = open(data_file, 'r')
 
-        pin = mp.Process(target=self.__readFile, args=())
-        p_write_inputs = mp.Process(target=self.write_input_mappings, args=())
-        p_write_tx = mp.Process(target=self.write_tx_mappings, args=())
-        ps = [mp.Process(target=self.__populateMapping, args=(self.mapping, self.txMapping))
-                    for i in range(self.numprocs)]
+        p_read_inputs = mp.Process(target=self.__read_file, args=())
+        p_write_inputs = mp.Process(target=self.__write_input_mappings, args=())
+        p_write_tx = mp.Process(target=self.__write_tx_mappings, args=())
+        p_populate_mapping = [mp.Process(target=self.__populate_mapping, args=(self.mapping, self.txMapping))
+                              for i in range(self.numprocs)]
 
-        pin.start()
+        p_read_inputs.start()
         p_write_inputs.start()
         p_write_tx.start()
-        for p in ps:
+        for p in p_populate_mapping:
             p.start()
 
-        pin.join()
+        p_read_inputs.join()
         i = 0
-        for p in ps:
+        for p in p_populate_mapping:
             p.join()
             print "Done", i
             i += 1
@@ -51,21 +54,21 @@ class MappingCreator:
         p_write_tx.join()
         self.infile.close()
 
-    def readInputMapping(self):
-        return self.__readMapping("inputs")
+    def read_input_mapping(self):
+        return self.__read_mapping("inputs")
 
-    def readTxMapping(self):
-        return self.__readMapping("tx")
+    def read_tx_mapping(self):
+        return self.__read_mapping("tx")
 
-    def __readFile(self):
+    def __read_file(self):
         for line in self.infile:
             data = np.array(line.split(','))
-            self.inq.put({'tx':data[0], 'inputs': data[1:]})
+            self.input_queue.put({'tx': data[0], 'inputs': data[1:]})
 
         for i in range(self.numprocs):
-            self.inq.put("STOP")
+            self.input_queue.put("STOP")
 
-    def __compressInputValue(self, mapping, input):
+    def __compress_input_value(self, mapping, input):
         with self.lock:
             if input not in mapping:
                 mapping[input] = self.p_counter.value
@@ -73,7 +76,7 @@ class MappingCreator:
                 return mapping[input]
         return None
 
-    def __compressTxValue(self, mapping, tx):
+    def __compress_tx_value(self, mapping, tx):
         with self.lock_tx:
             if tx not in mapping:
                 mapping[tx] = self.p_counter_tx.value
@@ -81,19 +84,19 @@ class MappingCreator:
                 return mapping[tx]
         return None
 
-    def __populateMapping(self, mapping, txMapping):
-        for row in iter(self.inq.get, "STOP"):
+    def __populate_mapping(self, mapping, tx_mapping):
+        for row in iter(self.input_queue.get, "STOP"):
             for input in row['inputs']:
-                iv = self.__compressInputValue(mapping, input)
+                iv = self.__compress_input_value(mapping, input)
                 if iv is not None:
                     self.inputs_out_queue.put((iv, input))
-            tv = self.__compressTxValue(txMapping, row['tx'])
+            tv = self.__compress_tx_value(tx_mapping, row['tx'])
             if tv is not None:
                 self.tx_out_queue.put((tv, row['tx']))
         self.inputs_out_queue.put("STOP")
         self.tx_out_queue.put("STOP")
 
-    def write_input_mappings(self):
+    def __write_input_mappings(self):
         inputs = open('mappings/inputs.txt', 'a')
         for works in range(self.numprocs):
             for i, val in iter(self.inputs_out_queue.get, "STOP"):
@@ -102,19 +105,25 @@ class MappingCreator:
                 inputs.write("%s,%s" % (i, val))
         inputs.close()
 
-    def write_tx_mappings(self):
+    def __write_tx_mappings(self):
         tx = open('mappings/tx.txt', 'a')
         for works in range(self.numprocs):
             for i, val in iter(self.tx_out_queue.get, "STOP"):
                 tx.write("%s,%s\n" % (i, val))
         tx.close()
 
-    def __readMapping(self, file):
+    @staticmethod
+    def __read_mapping(file):
         mapping = {}
-        with open('mappings/'+file+'.txt', 'rb') as f:
+        with open('mappings/' + file + '.txt', 'rb') as f:
             for line in f:
                 (key, val) = line.split(",")
                 mapping[int(key)] = val
         return mapping
 
-MappingCreator().createMapping()
+
+mappings = MappingCreator()
+mappings.create_mapping()
+print mappings.read_input_mapping()
+print mappings.read_tx_mapping()
+
