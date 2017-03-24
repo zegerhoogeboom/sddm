@@ -1,20 +1,52 @@
 import pandas as pd
 import numpy as np
-import pickle
+import multiprocessing as mp
 
 
 class MappingCreator:
     def __init__(self):
-        self.mapping = {}
         self.counter = 0
-        self.txMapping = {}
         self.txCounter = 0
-        pass
+        manager = mp.Manager()
+        self.mapping = manager.dict()
+        self.txMapping = manager.dict()
+
+        self.p_counter = mp.Value('i', 0)
+        self.lock = mp.Lock()
+
+        self.p_counter_tx = mp.Value('i', 0)
+        self.lock_tx = mp.Lock()
+
+        self.numprocs = mp.cpu_count()
+
+        self.inq = mp.Queue()
+        self.inputs_out_queue = mp.Queue()
+        self.tx_out_queue = mp.Queue()
+
+        self.full_data = pd.DataFrame(columns=['tx','inputs'])
 
     def createMapping(self, data_file="sample_tx.txt"):
-        self.__readFile(data_file)
-        self.__populateMapping()
-        self.__writeMappings()
+        self.infile = open(data_file, 'r')
+
+        self.pin = mp.Process(target=self.__readFile, args=())
+        self.pout = mp.Process(target=self.__writeMappings, args=())
+        self.ps = [ mp.Process(target=self.__populateMapping, args=(self.mapping, self.txMapping))
+                    for i in range(self.numprocs)]
+
+        self.pin.start()
+        self.pout.start()
+        for p in self.ps:
+            p.start()
+
+        self.pin.join()
+        i = 0
+        for p in self.ps:
+            p.join()
+            print "Done", i
+            i += 1
+
+        self.pout.join()
+        self.infile.close()
 
     def readInputMapping(self):
         return self.__readMapping("inputs")
@@ -22,37 +54,61 @@ class MappingCreator:
     def readTxMapping(self):
         return self.__readMapping("tx")
 
-    def __readFile(self, data_file):
-        self.full_data = pd.DataFrame(columns=['tx','inputs'])
-        with open(data_file, 'r') as f:
-            for line in f:
-                data = np.array(line.split(','))
-                self.full_data = self.full_data.append({'tx':data[0], 'inputs': data[1:]}, ignore_index=True)
+    def __readFile(self):
+        for line in self.infile:
+            data = np.array(line.split(','))
+            self.inq.put({'tx':data[0], 'inputs': data[1:]})
 
-    def __compressInputValue(self, input):
-        if input not in self.mapping:
-            self.mapping[input] = self.counter
-            self.counter += 1
+        for i in range(self.numprocs):
+            self.inq.put("STOP")
 
-    def __compressTxValue(self, tx):
-        if tx not in self.txMapping:
-            self.txMapping[tx] = self.txCounter
-            self.txCounter += 1
+    def __compressInputValue(self, mapping, input):
+        with self.lock:
+            if input not in mapping:
+                mapping[input] = self.p_counter.value
+                self.p_counter.value += 1
+                return mapping[input]
+        return None
 
-    def __populateMapping(self):
-        for ix, value in self.full_data['inputs'].iteritems():
-            for input in value:
-                self.__compressInputValue(input)
+    def __compressTxValue(self, mapping, tx):
+        with self.lock_tx:
+            if tx not in mapping:
+                mapping[tx] = self.p_counter_tx.value
+                self.p_counter_tx.value += 1
+                return mapping[tx]
+        return None
 
-        for ix, value in self.full_data['tx'].iteritems():
-            self.__compressTxValue(value)
+    def __populateMapping(self, mapping, txMapping):
+        for row in iter(self.inq.get, "STOP"):
+            for input in row['inputs']:
+                iv = self.__compressInputValue(mapping, input)
+                if iv is not None:
+                    self.inputs_out_queue.put((iv, input))
+            tv = self.__compressTxValue(txMapping, row['tx'])
+            if tv is not None:
+                self.tx_out_queue.put((tv, row['tx']))
+        self.inputs_out_queue.put("STOP")
+        self.tx_out_queue.put("STOP")
 
     def __writeMappings(self):
-        with open('mappings/inputs.pkl', 'wb') as f:
-            pickle.dump(self.mapping, f, pickle.HIGHEST_PROTOCOL)
-        with open('mappings/tx.pkl', 'wb') as f:
-            pickle.dump(self.txMapping, f, pickle.HIGHEST_PROTOCOL)
+        inputs = open('mappings/inputs.txt', 'a')
+        tx = open('mappings/tx.txt', 'a')
+        for works in range(self.numprocs):
+            for i, val in iter(self.inputs_out_queue.get, "STOP"):
+                if "\n" not in val:
+                    val += "\n"
+                inputs.write("%s,%s" % (i, val))
+            for i, val in iter(self.tx_out_queue.get, "STOP"):
+                tx.write("%s,%s\n" % (i, val))
+        inputs.close()
+        tx.close()
 
     def __readMapping(self, file):
-        with open('mappings/'+file+'.pkl', 'rb') as f:
-            return pickle.load(f)
+        mapping = {}
+        with open('mappings/'+file+'.txt', 'rb') as f:
+            for line in f:
+                (key, val) = line.split(",")
+                mapping[int(key)] = val
+        return mapping
+
+MappingCreator().createMapping()
