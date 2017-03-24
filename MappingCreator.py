@@ -72,27 +72,22 @@ class MappingCreator:
         with self.lock:
             if input not in mapping:
                 mapping[input] = self.p_counter.value
+                self.inputs_out_queue.put((mapping[input], input))
                 self.p_counter.value += 1
-                return mapping[input]
-        return None
 
     def __compress_tx_value(self, mapping, tx):
         with self.lock_tx:
             if tx not in mapping:
                 mapping[tx] = self.p_counter_tx.value
                 self.p_counter_tx.value += 1
-                return mapping[tx]
-        return None
+                self.tx_out_queue.put((mapping[tx], tx))
 
     def __populate_mapping(self, mapping, tx_mapping):
         for row in iter(self.input_queue.get, "STOP"):
             for input in row['inputs']:
-                iv = self.__compress_input_value(mapping, input)
-                if iv is not None:
-                    self.inputs_out_queue.put((iv, input))
-            tv = self.__compress_tx_value(tx_mapping, row['tx'])
-            if tv is not None:
-                self.tx_out_queue.put((tv, row['tx']))
+                self.__compress_input_value(mapping, input)
+            self.__compress_tx_value(tx_mapping, row['tx'])
+
         self.inputs_out_queue.put("STOP")
         self.tx_out_queue.put("STOP")
 
