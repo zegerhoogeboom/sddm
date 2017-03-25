@@ -12,12 +12,9 @@ rpc_user = "lusddm"
 rpc_password = "2t2e8o"
 rpc_connection = AuthServiceProxy("http://%s:%s@127.0.0.1:8332"%(rpc_user, rpc_password))
 
-#open a file to store the result, time added to avoir overwrites
-result_file_name = 'lister_result' + str(time.strftime('%y%m%d_%H%M%S'))
-fp = open(result_file_name, "wb")
 
 #open the csv file containing tx,nin
-csv_file = open("csv/octi.csv")
+csv_file = open("csv/all.csv")
 table = pd.read_csv(csv_file)
 full_transaction_list = table["tx"].values
 
@@ -39,6 +36,10 @@ for j in range(range_min, range_max, range_size):
     #group_of_tx contains the raw transactions, retreived from the rpc, of the subset of transactions
     group_of_tx = rpc_connection.batch_(command)
 
+
+    result_file_name = '/home/s1953583/mydata/result/I_' + str(j).zfill(9) + '_' + str((j+range_size if j+range_size<range_max else range_max)-1).zfill(9) + '_T_' + str(time.strftime('%y%m%d_%H%M%S'))
+    fp = open(result_file_name, "wb")
+
     for tx in group_of_tx:
         #define the command to retreive all the raw transactions that are input of tx (where tx is a transaction in the group_of_tx previously retreived)
         command = [["getrawtransaction", t['txid'], 1] for t in tx['vin']]
@@ -53,4 +54,4 @@ for j in range(range_min, range_max, range_size):
 
         stringa = str(tx['hash']) + "," + ",".join(input_addresses) + "\n"
         fp.write(stringa)
-fp.close()
+    fp.close()
