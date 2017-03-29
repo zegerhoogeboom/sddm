@@ -54,6 +54,29 @@ class MappingCreator:
         p_write_tx.join()
         self.infile.close()
 
+    def create_mapped_data(self, data_file="sample_tx.txt"):
+        self.infile = open(data_file, 'r')
+
+        input_mapping = {v: k for k, v in self.read_input_mapping().iteritems()}
+        tx_mapping = {v: k for k, v in self.read_tx_mapping().iteritems()}
+
+        p_read_inputs = mp.Process(target=self.__read_file, args=())
+        p_write_mappings = mp.Process(target=self.__write_mapped_tx, args=(input_mapping, tx_mapping))
+
+        p_read_inputs.start()
+        p_write_mappings.start()
+
+        p_read_inputs.join()
+        p_write_mappings.join()
+        self.infile.close()
+
+    def __write_mapped_tx(self, input_mapping, tx_mapping):
+        mapped = open('mappings/mapped.txt', 'a')
+        for row in iter(self.input_queue.get, "STOP"):
+            tx = tx_mapping[row['tx']]
+            inputs = map(lambda input: str(input_mapping[input]), row['inputs'])
+            mapped.write("%i,%s\n" % (tx, ','.join(inputs)))
+
     def read_input_mapping(self):
         return self.__read_mapping("inputs")
 
@@ -63,6 +86,7 @@ class MappingCreator:
     def __read_file(self):
         for line in self.infile:
             data = np.array(line.split(','))
+            data[-1] = data[-1].replace("\n", "")
             self.input_queue.put({'tx': data[0], 'inputs': data[1:]})
 
         for i in range(self.numprocs):
@@ -95,9 +119,7 @@ class MappingCreator:
         inputs = open('mappings/inputs.txt', 'a')
         for works in range(self.numprocs):
             for i, val in iter(self.inputs_out_queue.get, "STOP"):
-                if "\n" not in val:
-                    val += "\n"
-                inputs.write("%s,%s" % (i, val))
+                inputs.write("%s,%s\n" % (i, val))
         inputs.close()
 
     def __write_tx_mappings(self):
@@ -113,12 +135,6 @@ class MappingCreator:
         with open('mappings/' + file + '.txt', 'rb') as f:
             for line in f:
                 (key, val) = line.split(",")
+                val = val.replace("\n", "")
                 mapping[int(key)] = val
         return mapping
-
-
-mappings = MappingCreator()
-mappings.create_mapping()
-print mappings.read_input_mapping()
-print mappings.read_tx_mapping()
-
