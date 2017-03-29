@@ -1,3 +1,9 @@
+import sys
+
 from MappingCreator import MappingCreator
 
-MappingCreator().create_mapped_data()
+data_file = "sample_tx.txt"
+if len(sys.argv) == 2:
+    data_file = sys.argv[1]
+
+MappingCreator().create_mapped_data(data_file)
