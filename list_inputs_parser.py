@@ -7,22 +7,26 @@ import itertools
 # containing the .blk files created by bitcoind
 blockchain = Blockchain(sys.argv[1])
 ofile  = open('/local/s1968130/output.csv', "wb")
+failed_file = open('/local/s1968130/failed_output.csv', "wb")
 
 txs = {}
+failed_txs = []
 
 count = 0
 # n = 500
 # blocks = list(itertools.islice(blockchain.get_unordered_blocks(), 0, n, 1))
-blocks = blockchain.get_unordered_blocks()
-for block in blocks:
+for block in blockchain.get_unordered_blocks():
     for tx in block.transactions:
-        if count % 10000 == 0:
-            print ("Transactions done: %i" % count)
-        addresses = map(lambda x: map(lambda y: y.address, x.addresses), tx.outputs)
-        txs[tx.hash] = [item for sublist in addresses for item in sublist]
-        count += 1
+        try:
+            addresses = map(lambda x: map(lambda y: y.address, x.addresses), tx.outputs)
+            txs[tx.hash] = [item for sublist in addresses for item in sublist]
+        except Exception:
+            failed_txs.append(tx.hash)
+    if count % 10000 == 0:
+        print ("Transactions done: %i" % count)
+    count += len(block.transactions)
 
-for block in blocks:
+for block in blockchain.get_unordered_blocks():
     for tx in block.transactions:
         input_addresses = []
         for input in tx.inputs:
@@ -32,3 +36,6 @@ for block in blocks:
         stringa = str(tx.hash) + "," + ",".join(input_addresses) + "\n"
         ofile.write(stringa)
 ofile.close()
+failed_file.write("\n".join(failed_txs))
+failed_file.close()
+
