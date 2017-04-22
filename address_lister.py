@@ -5,18 +5,12 @@ import time
 import pandas as pd
 import numpy as np
 import csv
-from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
+from blockchain_parser.blockchain import Blockchain
 
 #connect to the bitcoin rpc
-rpc_user = "lusddm"
-rpc_password = "2t2e8o"
-rpc_connection = AuthServiceProxy("http://%s:%s@127.0.0.1:8332"%(rpc_user, rpc_password))
-
+blockchain = Blockchain("/data/s1968130/.bitcoin/blocks")
 
 #open the csv file containing tx,nin
-csv_file = open("csv/all.csv")
-table = pd.read_csv(csv_file)
-full_transaction_list = table["tx"].values
 
 range_size = 100
 

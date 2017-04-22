@@ -16,7 +16,7 @@ class BlockChainParser:
         # More info: https://docs.python.org/3/library/multiprocessing.html#sharing-state-between-processes
 
         # Max amount of processors. This setting: Use ALL of the CPU's!
-        self.numprocs = mp.cpu_count() # 24
+        self.numprocs = 32 #mp.cpu_count() # 24
 
         self.input_queue = mp.Queue()
 
@@ -61,9 +61,9 @@ class BlockChainParser:
 
     def __read_file(self):
         count = 0
-        # n = 5000
-        # blocks = list(itertools.islice(self.blockchain.get_unordered_blocks(), 0, n, 1))
-        for block in self.blockchain.get_unordered_blocks():
+        n = 500000
+        blocks = list(itertools.islice(self.blockchain.get_unordered_blocks(), 0, n, 1))
+        for block in blocks:
             self.input_queue.put(block)
             if count % 10000 == 0:
                 print ("Transactions done: %i" % count)
