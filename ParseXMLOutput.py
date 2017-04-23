@@ -1,7 +1,7 @@
 import sys
 from lxml import etree
 
-output_file = open('xml_parser_output.txt', "wb")
+output_file = open('/data/s1968130/xml_parser_output.txt', "wb")
 data_file = "sample_output.xml"
 if len(sys.argv) == 2:
     data_file = sys.argv[1]
@@ -23,6 +23,7 @@ class ParseThingy:
         self.outputs = {}
         self.inputs = {}
         self.is_in_input = False
+        self.index = 0
 
     def reset(self):
         self.current_tx = ""
@@ -37,6 +38,9 @@ class ParseThingy:
 
     def parseTx(self, elt, evt):
         if elt.tag == "tx" and evt == "start":
+            if self.index % 10000 == 0:
+                print "Parsing TX %i" % self.index
+            self.index += 1
             self.current_tx = elt.attrib['hash']
         if elt.tag == "tx" and evt == "end":
             self.outputs[self.current_tx] = self.current_outputs
@@ -45,15 +49,12 @@ class ParseThingy:
 
     def parseInput(self, elt, evt):
         if elt.tag == "inputs" and evt == "start":
-            print "In input"
             self.is_in_input = True
         if self.is_in_input and elt.tag == "index" and evt == "start":
-            print "In index"
             self.current_input_indexes.append(elt.text)
         if elt.tag == "in_tx_hash" and evt == "start":
             self.current_inputs.append(elt.text)
         if elt.tag == "outputs" and evt == "start":
-            print "Out input"
             self.is_in_input = False
 
     def parseOutput(self, elt, evt):
@@ -66,7 +67,12 @@ class ParseThingy:
             context = etree.iterparse(f, events=('start', 'end',), html=True)
             fast_iter(context, self.process_element)
 
+        print "Done parsing!"
+        self.index = 0
         for tx, input_txs in self.inputs.iteritems():
+            if self.index % 10000 == 0:
+                print "Writing TX: %i" % self.index
+            self.index += 1
             inputs = []
             for input, i in input_txs.iteritems():
                 tx_inputs = self.outputs.get(input, None)
@@ -77,6 +83,8 @@ class ParseThingy:
 
             stringa = tx + "," + ",".join(inputs) + "\n"
             output_file.write(stringa)
+
+        output_file.close()
 
 ParseThingy().parse()
 
